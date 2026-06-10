@@ -7,12 +7,11 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware - QUAN TRỌNG: Đặt cors và json TRƯỚC route
 app.use(cors({
   origin: 'http://localhost:3000',
   credentials: true
 }));
-app.use(express.json()); // Đảm bảo dòng này có
+app.use(express.json()); 
 
 console.log('=== BACKEND STARTUP ===');
 console.log('PORT:', PORT);
