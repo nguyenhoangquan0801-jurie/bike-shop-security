@@ -611,4 +611,20 @@ footer {
 .sort-select {
   width: 100%;
 }
+
+.verify-btn {
+  display: block;
+  margin-top: 10px;
+  padding: 12px;
+  text-align: center;
+  background: #3498db;
+  color: white;
+  text-decoration: none;
+  border-radius: 6px;
+  font-weight: bold;
+}
+
+.verify-btn:hover {
+  opacity: 0.9;
+}
 }

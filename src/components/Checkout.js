@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import './Checkout.css';
+import { signatureAPI } from "../api/signatureApi";
+import {signData, verifyData} from "../crypto/rsaService";
 
 function Checkout({ cart, total, onClose, onConfirmOrder }) {
   const [formData, setFormData] = useState({
@@ -21,16 +23,11 @@ function Checkout({ cart, total, onClose, onConfirmOrder }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({
-      ...formData,
-      [name]: value
-    });
+    setFormData({ ...formData, [name]: value });
+
     // Clear error when user starts typing
     if (errors[name]) {
-      setErrors({
-        ...errors,
-        [name]: ''
-      });
+      setErrors({ ...errors, [name]: '' });
     }
   };
 
@@ -41,47 +38,91 @@ function Checkout({ cart, total, onClose, onConfirmOrder }) {
       newErrors.fullName = 'Vui lòng nhập họ tên';
     }
     
-    if (!formData.email.trim()) {
-      newErrors.email = 'Vui lòng nhập email';
+    if (!formData.email.trim()) { newErrors.email = 'Vui lòng nhập email';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Email không hợp lệ';
     }
     
-    if (!formData.phone.trim()) {
-      newErrors.phone = 'Vui lòng nhập số điện thoại';
+    if (!formData.phone.trim()) { newErrors.phone = 'Vui lòng nhập số điện thoại';
     } else if (!/^(0|\+84)[3|5|7|8|9][0-9]{8}$/.test(formData.phone)) {
       newErrors.phone = 'Số điện thoại không hợp lệ';
     }
-    
-    if (!formData.address.trim()) {
-      newErrors.address = 'Vui lòng nhập địa chỉ';
+    if (!formData.address.trim()) { newErrors.address = 'Vui lòng nhập địa chỉ';
     }
-    
-    if (!formData.city.trim()) {
-      newErrors.city = 'Vui lòng nhập thành phố';
+    if (!formData.city.trim()) { newErrors.city = 'Vui lòng nhập thành phố';
     }
 
     return newErrors;
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    
-    const formErrors = validateForm();
-    if (Object.keys(formErrors).length > 0) {
-      setErrors(formErrors);
-      return;
-    }
+  const handleSubmit = async (e) => {
+  e.preventDefault();
 
-    setIsSubmitting(true);
-    
-    // Simulate API call
-    setTimeout(() => {
-      setIsSubmitting(false);
-      onConfirmOrder(formData);
-      onClose();
-    }, 1500);
-  };
+  const formErrors = validateForm();
+
+  if (Object.keys(formErrors).length > 0) {
+    setErrors(formErrors);
+    return;
+  }
+
+  setIsSubmitting(true);
+
+  try {
+
+  const privateKey = localStorage.getItem("privateKey");
+  const publicKey = localStorage.getItem("publicKey");
+
+  if (!privateKey || !publicKey) { alert( "Bạn chưa tạo RSA Key" );
+    setIsSubmitting(false);
+    return;
+  }
+
+  const quantity = cart.reduce( (sum, item) => sum + item.quantity, 0);
+  const price = total;
+  const orderId = Date.now().toString();
+  console.log(JSON.stringify(cart,null,2));
+  const productIds = cart.map(item => item.id).join(",");
+  const normalizedItems = cart.map(i => ({id: i.id,quantity: i.quantity, price: i.price}));
+
+  const dataToSign = JSON.stringify({orderId, items: normalizedItems, quantity, price});
+  console.log("FRONTEND DATA =", dataToSign);
+  console.log("PRODUCT IDS =", productIds);
+
+  const signature = signData( privateKey, dataToSign );
+  console.log("Verify frontend:",verifyData( publicKey, dataToSign, signature));
+
+  const signatureFile = { orderId, items: normalizedItems, quantity, price, publicKey, signature };
+  console.log("SIGNATURE FILE =", signatureFile);
+  const blob = new Blob( [JSON.stringify( signatureFile,null, 2 )],
+      {
+        type: "application/json"
+      }
+    );
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `signature_New_${orderId}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+  const result = await signatureAPI.createOrder({ orderId, items: normalizedItems, quantity, price, publicKey, signature});
+
+  console.log(result);
+  setIsSubmitting(false);
+  onConfirmOrder(formData);
+  onClose();
+
+}catch(error){
+  console.error("FULL ERROR:", error);
+
+  if(error.response){
+    console.log("STATUS:", error.response.status);
+    console.log("DATA:", error.response.data);
+  }
+
+  setIsSubmitting(false);
+}
+};
 
   return (
     <div className="checkout-overlay" onClick={onClose}>

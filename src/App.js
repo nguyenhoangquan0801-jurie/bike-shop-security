@@ -10,6 +10,8 @@ import { productsAPI } from './api/products';
 import Auth from './components/Auth';
 import UserMenu from './components/UserMenu';
 import './App.css';
+import SignaturePanel from "./components/SignaturePanel";
+import VerifyOrderFile from "./components/VerifyOrderFile";
 
 function App() {
   console.log('=== APP START ===');
@@ -307,6 +309,7 @@ const handleConfirmOrder = (orderData) => {
             <Link to="/">Trang chủ</Link>
             <Link to="/products">Sản phẩm</Link>
             <Link to="/about">Giới thiệu</Link>
+            <Link to="/verify-order">Kiểm tra chữ ký</Link>
           </nav>
           <div className="search-box">
             <input
@@ -338,6 +341,8 @@ const handleConfirmOrder = (orderData) => {
           </div>
       </header>
 
+      <SignaturePanel />
+        
       <main>
         {error && (
             <div className="error-banner">
@@ -362,6 +367,8 @@ const handleConfirmOrder = (orderData) => {
             />
           } />
           <Route path="/about" element={<About />} />
+          <Route path="/verify-order" element = {<VerifyOrderFile />}
+          />
         </Routes>
   </main>
 
@@ -412,6 +419,7 @@ const handleConfirmOrder = (orderData) => {
             <div className="cart-actions">
             <button onClick={clearCart} className="clear-cart-btn" disabled={cart.length === 0}> Xóa giỏ hàng </button>
             <button className="checkout" onClick={() => setShowCheckout(true)}disabled={cart.length === 0}>Thanh toán </button>
+            <Link  to="/verify-order" className="verify-btn"> Kiểm tra chữ ký</Link>
           </div>
           </div>
         )}

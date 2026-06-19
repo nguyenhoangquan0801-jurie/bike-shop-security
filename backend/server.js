@@ -2,10 +2,41 @@
 const express = require('express');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
+const crypto = require('crypto');
+const fs = require("fs");
+const path = require("path");
+const { v4: uuidv4 } = require("uuid");
 require('dotenv').config();
+const forge = require("node-forge");
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+
+const ORDERS_FILE = path.join(__dirname, "data", "orders.json");
+
+const USERS_FILE = path.join(__dirname, "data", "users.json");
+
+const LOG_FILE = path.join(__dirname, "data", "logs.txt");
+
+function writeLog(message) {
+
+  const logLine = `[${new Date().toISOString()}] ${message}\n`;
+  fs.appendFileSync(LOG_FILE, logLine);
+}
+function getOrders() { 
+  if (!fs.existsSync(ORDERS_FILE))
+    return [];
+  const content = fs.readFileSync(ORDERS_FILE, "utf8");
+
+  console.log("ORDERS FILE:");
+  console.log(content);
+
+  return JSON.parse(content);
+}
+function saveOrders(orders) {
+
+  fs.writeFileSync( ORDERS_FILE, JSON.stringify(orders, null,2));
+}
 
 app.use(cors({
   origin: 'http://localhost:3000',
@@ -110,7 +141,7 @@ app.post('/send-welcome-email', async (req, res) => {
                     text-align: center; border-radius: 0 0 10px 10px; font-size: 14px;">
             <p> <strong>Bike Shop</strong></p>
             <p> 17 đường Linh Xuân, Thủ Đức, TP.HCM</p>
-            <p> 0702972210 | ✉️ support@bikeshop.com</p>
+            <p> 0702972210 |  support@bikeshop.com</p>
             <p>© ${new Date().getFullYear()} Bike Shop. Mọi quyền được bảo lưu.</p>
           </div>
         </div>
@@ -146,9 +177,84 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     endpoints: {
       health: 'GET /health',
-      sendEmail: 'POST /send-welcome-email'
+      sendEmail: 'POST /send-welcome-email',
+      verifySignature: 'POST /verify-signature'
     }
   });
+});
+
+app.post( "/create-order", (req, res) => {
+    try { 
+      const { orderId, items, quantity, price, publicKey,signature} = req.body;
+      console.log("=== CREATE ORDER ===");
+      console.log(orderId);
+      console.log(quantity);
+      console.log(price);
+      console.log(publicKey?.substring(0,50));
+      console.log(signature?.substring(0,50));
+      const normalizedItems = items.map(i => ({id: i.id,quantity: i.quantity,price: i.price}));
+
+      const data = JSON.stringify({ orderId, items: normalizedItems, quantity, price });
+
+      console.log("DATA:", data);
+      console.log("PUBLIC KEY:", publicKey);
+      console.log("SIGNATURE:", signature);
+
+      console.log("orderId:", orderId);
+      console.log("quantity:", quantity);
+      console.log("price:", price);
+      console.log("data:", data);
+
+      const publicKeyObj = forge.pki.publicKeyFromPem(publicKey);
+      const md = forge.md.sha256.create();
+
+      md.update(data, "utf8");
+      console.log("VERIFY DATA =", data);
+      console.log("REQUEST BODY =", req.body);
+
+      const isValid = publicKeyObj.verify( md.digest().bytes(), forge.util.decode64(signature));
+      console.log("VERIFY =", isValid);
+
+      if (!isValid) {
+        writeLog( `FAILED ${orderId}`);
+        return res.status(400).json({success:false, message: "Signature invalid"});
+      }
+
+      const orders = getOrders();
+      const order = { orderId, items, quantity, price,status: "pending" , createdAt: new Date().toISOString()};
+
+      orders.push(order);
+      saveOrders(orders);
+      writeLog( `SUCCESS ${orderId}`);
+
+      res.json({
+        success:true, order
+      });
+
+    } catch(error){ console.error(error);
+      res.status(500).json({ success:false, message:error.message});
+    }
+});
+
+app.post("/verify-order-file", (req, res) => {
+  try {
+
+    const { orderId,items, quantity, price, publicKey, signature } = req.body;
+    const data =JSON.stringify({ orderId,items, quantity, price});
+    const publicKeyObj =forge.pki.publicKeyFromPem(publicKey);
+    const md = forge.md.sha256.create();
+    md.update(data, "utf8");
+
+    const isValid = publicKeyObj.verify(md.digest().bytes(), forge.util.decode64(signature)
+    );
+
+    res.json({ success: true,valid: isValid, orderId});
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({success: false, message: error.message });
+
+  }
 });
 
 app.get('/', (req, res) => {
@@ -157,10 +263,33 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       health: 'GET /health',
-      sendEmail: 'POST /send-welcome-email'
+      sendEmail: 'POST /send-welcome-email',
+      verifySignature: 'POST /verify-signature'
     }
   });
 });
+
+app.post("/update-order-status", (req, res) => {
+  try {
+    const { orderId, status } = req.body;
+    const orders = getOrders();
+    const index = orders.findIndex(o => o.orderId === orderId);
+
+    if (index === -1) {
+      return res.status(404).json({ success: false, message: "Order not found"
+      });
+    }
+
+    orders[index].status = status;
+    saveOrders(orders);
+    res.json({  success: true, order: orders[index]
+    });
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message});
+  }
+});
+
 
 // Khởi động server
 app.listen(PORT, () => {
